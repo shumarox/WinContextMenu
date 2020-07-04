@@ -47,7 +47,7 @@ object WinContextMenu {
     def DeleteMenu(hmenu: HMENU, uPosition: Int, uFlags: Int): Boolean
   }
 
-  private val User32ForMenu: User32ForMenu = Native.loadLibrary("user32", classOf[User32ForMenu], W32APIOptions.DEFAULT_OPTIONS)
+  private val User32ForMenu: User32ForMenu = Native.load("user32", classOf[User32ForMenu], W32APIOptions.DEFAULT_OPTIONS)
 
   private def executeAndThrow(name: String, f: => HRESULT): Unit = {
     val hResult = f
@@ -333,7 +333,7 @@ private object MyIShellFolder {
           new WinNT.HRESULT(f.invokeInt(Array[AnyRef](interfacePointer, hwndOwner, Integer.valueOf(cidl), apidl, riid, rgfReserved, ppv)))
         }
 
-        override def GetDisplayNameOf(pidl: Pointer, flags: Int, pName: PointerByReference): WinNT.HRESULT = {
+        override def GetDisplayNameOf(pidl: Pointer, flags: Int, pName: ShTypes.STRRET): WinNT.HRESULT = {
           val f = Function.getFunction(vTable(11), Function.ALT_CONVENTION)
           new WinNT.HRESULT(f.invokeInt(Array[AnyRef](interfacePointer, pidl, Integer.valueOf(flags), pName)))
         }
