@@ -22,6 +22,8 @@ case class ExtraMenuInfo(label: String, function: () => Unit, subMenus: collecti
 
 object WinContextMenu {
 
+  var additionalRemoveList: collection.Seq[String] = Nil
+
   def main(args: Array[String]): Unit = {
     val files = if (args == null || args.isEmpty) Array(new File(".").getCanonicalPath) else args
     show(files.map(new File(_)), 0, 0)
@@ -101,9 +103,15 @@ object WinContextMenu {
 
           (pidls, desktopShellFolder)
         } else {
+          var parent: File = firstFile.getParentFile
+
+          while (parent != null && files.exists(f => parent.toPath.relativize(f.toPath).toFile.getPath.contains(".."))) {
+            parent = parent.getParentFile
+          }
+
           val shellFolder = {
             val pidl = new PointerByReference
-            executeAndThrow("ParseDisplayName(parent)", desktopShellFolder.ParseDisplayNameFromWString(dummyHwnd, null, new WString(firstFile.getParent), new IntByReference(), pidl, new IntByReference()))
+            executeAndThrow("ParseDisplayName(parent)", desktopShellFolder.ParseDisplayNameFromWString(dummyHwnd, null, new WString(parent.getPath), new IntByReference(), pidl, new IntByReference()))
 
             val pShellFolder = new PointerByReference
             executeAndThrow("SHBindToParent", desktopShellFolder.BindToObject(pidl.getValue, null, new REFIID(IShellFolder.IID_ISHELLFOLDER), pShellFolder))
@@ -116,7 +124,7 @@ object WinContextMenu {
           val pidls =
             files.map(f => new File(f.getAbsolutePath)).map { file =>
               val pidl = new PointerByReference
-              executeAndThrow("ParseDisplayName(name)", shellFolder.ParseDisplayNameFromWString(dummyHwnd, null, new WString(file.getName), new IntByReference(), pidl, new IntByReference()))
+              executeAndThrow("ParseDisplayName(name)", shellFolder.ParseDisplayNameFromWString(dummyHwnd, null, new WString(parent.toPath.relativize(file.toPath).toFile.getPath), new IntByReference(), pidl, new IntByReference()))
               pidl
             }.toArray
 
@@ -142,19 +150,25 @@ object WinContextMenu {
       var propertyMenuId: Int = -1
 
       val name = new Array[Char](1024)
-      (0 until 0x7FFF).foreach { i =>
-        util.Arrays.fill(name, '\u0000')
 
-        User32ForMenu.GetMenuString(menu, i, name, name.length, 0)
+      // メニュー走査1回目は「ライブラリを取得中...」となるものがあるため、2回まわす。
+      (0 until 2).foreach { x =>
+        (0 until 0x7FFF).foreach { i =>
+          util.Arrays.fill(name, '\u0000')
 
-        val menuItemName = new String(name).takeWhile(_ != '\u0000')
+          User32ForMenu.GetMenuString(menu, i, name, name.length, 0)
 
-        if (menuItemName == "コピー(&C)") {
-          copyMenuId = i
-        } else if (menuItemName == "プロパティ(&R)") {
-          propertyMenuId = i
-        } else if (removeList.contains(menuItemName)) {
-          User32ForMenu.DeleteMenu(menu, i, 0)
+          val menuItemName = new String(name).takeWhile(_ != '\u0000')
+
+          if (menuItemName.isEmpty) {
+            // nop
+          } else if (menuItemName == "コピー(&C)") {
+            copyMenuId = i
+          } else if (menuItemName == "プロパティ(&R)") {
+            propertyMenuId = i
+          } else if (removeList.contains(menuItemName) || additionalRemoveList.contains(menuItemName)) {
+            User32ForMenu.DeleteMenu(menu, i, 0)
+          }
         }
       }
 
